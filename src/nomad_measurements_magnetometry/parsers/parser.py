@@ -14,6 +14,23 @@ if TYPE_CHECKING:
 
 
 class VSMParser(MatchingParser):
+    def is_mainfile(self, filename: str, mime: str, buffer: bytes, decoded_buffer: str, compression: str = None) -> bool:
+        """
+        Gatekeeper: Only returns True if the file contains Lake Shore VSM headers.
+        """
+        # 1. Standard regex check (handles the .csv extension)
+        is_csv = super().is_mainfile(filename, mime, buffer, decoded_buffer, compression)
+        if not is_csv:
+            return False
+
+        # 2. Check for the actual headers found in your data files
+        if decoded_buffer:
+            # Check for the very first line or the configuration blocks
+            if '#RUN ON SOFTWARE VERSION' in decoded_buffer or '#FIELD CONFIGURATIONS' in decoded_buffer:
+                return True
+
+        return False
+
     def parse(
         self,
         mainfile: str,
