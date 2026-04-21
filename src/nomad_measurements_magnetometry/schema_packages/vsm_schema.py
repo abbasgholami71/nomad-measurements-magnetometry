@@ -4,7 +4,7 @@ import numpy as np
 from nomad.datamodel.data import ArchiveSection, EntryData
 from nomad.datamodel.metainfo.annotations import ELNAnnotation, ELNComponentEnum
 from nomad.datamodel.metainfo.basesections import Measurement, MeasurementResult
-from nomad.metainfo import Quantity, SchemaPackage, Section, SubSection
+from nomad.metainfo import Quantity, Section, SubSection
 
 # Import external reader
 from readers_ientrance import read_lakeshore_vsm
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from nomad.datamodel.datamodel import EntryArchive
     from structlog.stdlib import BoundLogger
 
-m_package = SchemaPackage()
+from nomad_measurements_magnetometry.schema_packages import m_package
 
 
 # --- 1. Subsections ---
