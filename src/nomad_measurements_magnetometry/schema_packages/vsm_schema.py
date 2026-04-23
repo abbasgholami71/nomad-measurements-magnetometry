@@ -3,22 +3,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 from nomad.datamodel.data import ArchiveSection, EntryData
 from nomad.datamodel.metainfo.annotations import ELNAnnotation, ELNComponentEnum
-from nomad.datamodel.metainfo.basesections import Measurement, MeasurementResult
 from nomad.metainfo import Quantity, Section, SubSection
 
-# Import external reader
 from readers_ientrance import read_lakeshore_vsm
+from .base_schema import m_package, BaseMagnetometry, MagnetometrySample, MagnetometryResult
 
 if TYPE_CHECKING:
     from nomad.datamodel.datamodel import EntryArchive
     from structlog.stdlib import BoundLogger
 
-from nomad.metainfo import SchemaPackage
 
-m_package = SchemaPackage()
+# --- 1. VSM-Specific Subsections ---
 
-
-# --- 1. Subsections ---
 class FieldConfigurations(ArchiveSection):
     magnet_model = Quantity(type=str)
     power_supply = Quantity(type=str)
@@ -33,17 +29,6 @@ class FieldConfigurations(ArchiveSection):
     moment_x_calibration_expected_moment = Quantity(type=np.float64, description='emu')
     moment_x_calibration_standard_id = Quantity(type=str)
     moment_x_calibration_comments = Quantity(type=str)
-
-
-class SampleSettings(ArchiveSection):
-    sample_id = Quantity(type=str)
-    volume = Quantity(type=np.float64, unit='cm**3')
-    area = Quantity(type=np.float64, unit='cm**2')
-    mass = Quantity(type=np.float64, unit='g')
-    density = Quantity(type=np.float64, unit='g/cm**3')
-    thickness = Quantity(type=np.float64, unit='mm')
-    demagnetization_factor_in_si = Quantity(type=np.float64)
-    demagnetization_factor_in_cgs = Quantity(type=np.float64)
 
 
 class AdvancedAcquisitionSetup(ArchiveSection):
@@ -88,46 +73,18 @@ class DisplaySetup(ArchiveSection):
     right_y_axis = Quantity(type=str)
 
 
-# --- 2. Main Sections ---
-class VSMResult(MeasurementResult):
-    m_def = Section()
-    step_array = Quantity(type=np.int32, shape=['*'])
-    iteration_array = Quantity(type=np.int32, shape=['*'])
-    segment_array = Quantity(type=np.int32, shape=['*'])
-    magnetic_field = Quantity(
-        type=np.float64, shape=['*'], description='Applied magnetic field (Oe)'
-    )
-    magnetic_moment = Quantity(
-        type=np.float64, shape=['*'], description='Measured magnetic moment (emu)'
-    )
-    time_stamp = Quantity(type=np.float64, shape=['*'], unit='s')
-    field_status = Quantity(type=str, shape=['*'])
-    moment_status = Quantity(type=str, shape=['*'])
+# --- 2. Main VSM Schema ---
 
-
-class VibratingSampleMagnetometry(Measurement):
-    m_def = Section()
-    method = Quantity(type=str, default='Vibrating Sample Magnetometry (VSM)')
-    software_version = Quantity(type=str)
-    measurement_method = Quantity(type=str, description='FORC or HYSTERESIS')
-    start_time = Quantity(type=str)
-    finish_time = Quantity(type=str)
-
-    field_configurations = SubSection(sub_section=FieldConfigurations)
-    sample_settings = SubSection(sub_section=SampleSettings)
-    acquisition_setup = SubSection(sub_section=AcquisitionSetup)
-    display_setup = SubSection(sub_section=DisplaySetup)
-
-    results = Measurement.results.m_copy()
-    results.section_def = VSMResult
-
-
-class ELNVibratingSampleMagnetometry(VibratingSampleMagnetometry, EntryData):
-    m_def = Section(label='Vibrating Sample Magnetometry (VSM)')
+class ELNVibratingSampleMagnetometry(BaseMagnetometry, EntryData):
+    m_def = Section(label='Lake Shore VSM')
     data_file = Quantity(
         type=str,
         a_eln=ELNAnnotation(component=ELNComponentEnum.FileEditQuantity),
     )
+
+    field_configurations = SubSection(sub_section=FieldConfigurations)
+    acquisition_setup = SubSection(sub_section=AcquisitionSetup)
+    display_setup = SubSection(sub_section=DisplaySetup)
 
     def _get_cleaners(self, metadata):
         """Returns cleaning utilities for the mapping process."""
@@ -204,9 +161,10 @@ class ELNVibratingSampleMagnetometry(VibratingSampleMagnetometry, EntryData):
         self.display_setup = ds
 
     def _map_sample_and_configs(self, metadata, cleaners):
-        """Maps sample settings and field configurations."""
+        """Maps sample settings to base MagnetometrySample and VSM-specific field configs."""
         cf, _, _ = cleaners
 
+        # Map VSM Specific configurations
         fc = FieldConfigurations()
         fc.magnet_model = metadata.get('Magnet')
         fc.power_supply = metadata.get('Power supply')
@@ -227,16 +185,18 @@ class ELNVibratingSampleMagnetometry(VibratingSampleMagnetometry, EntryData):
         fc.moment_x_calibration_comments = metadata.get('Moment X calibration comments')
         self.field_configurations = fc
 
-        ss = SampleSettings()
-        ss.sample_id = metadata.get('ID')
-        ss.volume = cf('Volume', 'cm³')
-        ss.area = cf('Area', 'cm²')
-        ss.mass = cf('Mass', 'g')
-        ss.density = cf('Density', 'g/cm³')
-        ss.thickness = cf('Thickness', 'mm')
-        ss.demagnetization_factor_in_si = cf('Demagnetization factor in SI')
-        ss.demagnetization_factor_in_cgs = cf('Demagnetization factor in cgs')
-        self.sample_settings = ss
+        # Map Sample to Base Schema
+        if not self.sample_setup:
+            self.sample_setup = MagnetometrySample()
+
+        self.sample_setup.sample_id = metadata.get('ID')
+        self.sample_setup.volume = cf('Volume', 'cm³')
+        self.sample_setup.area = cf('Area', 'cm²')
+        self.sample_setup.mass = cf('Mass', 'g')
+        self.sample_setup.density = cf('Density', 'g/cm³')
+        self.sample_setup.thickness = cf('Thickness', 'mm')
+        self.sample_setup.demagnetizing_factor = cf('Demagnetization factor in SI')
+        self.sample_setup.demagnetizing_factor_cgs = cf('Demagnetization factor in cgs')
 
     def normalize(self, archive: 'EntryArchive', logger: 'BoundLogger'):
         if not self.data_file:
@@ -249,16 +209,19 @@ class ELNVibratingSampleMagnetometry(VibratingSampleMagnetometry, EntryData):
 
             cleaners = self._get_cleaners(vsm_data.metadata)
 
+            # Map to BaseMagnetometry fields
             self.software_version = vsm_data.metadata.get('Software Version')
-            self.measurement_method = vsm_data.metadata.get('Measurement Type')
             self.start_time = vsm_data.metadata.get('START TIME')
             self.finish_time = vsm_data.metadata.get('FINISH TIME')
+            self.measurement_type = vsm_data.metadata.get('Measurement Type')
 
+            # Map the subsections
             self._map_sample_and_configs(vsm_data.metadata, cleaners)
             self._map_acquisition_and_display(vsm_data.metadata, cleaners)
 
+            # Map Results to Base Schema
             if not self.results:
-                self.results = [VSMResult()]
+                self.results = [MagnetometryResult()]
 
             res = self.results[0]
             res.step_array = vsm_data.step
@@ -274,6 +237,3 @@ class ELNVibratingSampleMagnetometry(VibratingSampleMagnetometry, EntryData):
             logger.error(f'Error parsing VSM file: {e}')
 
         super().normalize(archive, logger)
-
-
-m_package.__init_metainfo__()

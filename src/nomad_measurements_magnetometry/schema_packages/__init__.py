@@ -1,26 +1,10 @@
-from nomad.config.models.plugins import SchemaPackageEntryPoint
+# 1. Import the shared package instance first
+from .base_schema import m_package
 
+# 2. Import all your classes
+from .base_schema import *
+from .agm_schema import *
+from .vsm_schema import *
 
-class AGMSchemaEntryPoint(SchemaPackageEntryPoint):
-    def load(self):
-        from .agm_schema import m_package
-
-        return m_package
-
-
-class VSMSchemaEntryPoint(SchemaPackageEntryPoint):
-    def load(self):
-        from .vsm_schema import m_package
-
-        return m_package
-
-
-agm_schema_entry_point = AGMSchemaEntryPoint(
-    name='AGM Schema',
-    description='Schema for MicroMag AGM data.',
-)
-
-vsm_schema_entry_point = VSMSchemaEntryPoint(
-    name='VSM Schema',
-    description='Schema for Lake Shore VSM data.',
-)
+# 3. Finalize the package metainfo
+m_package.__init_metainfo__()
