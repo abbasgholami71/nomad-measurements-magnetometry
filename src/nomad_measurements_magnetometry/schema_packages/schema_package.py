@@ -543,6 +543,7 @@ class ELNVibratingSampleMagnetometry(BaseMagnetometry, EntryData):
             cleaners = self._get_cleaners(vsm_data.metadata)
 
             # Map to BaseMagnetometry fields
+            self.instrument_model = 'Lake Shore VSM'
             self.software_version = vsm_data.metadata.get('Software Version')
             self.start_time = vsm_data.metadata.get('START TIME')
             self.finish_time = vsm_data.metadata.get('FINISH TIME')
